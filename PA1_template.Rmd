@@ -7,19 +7,129 @@ output:
 
 
 ## Loading and preprocessing the data
+The first step in our analysis is to obtain the data. It is present in the current directory, so we can import it from the zip file. 
+```{r}
+data <- read.csv(unz('activity.zip','activity.csv'),header=TRUE)
+```
+The missing values are already marked as 'NA'. We should, however, convert the date column into date type, since it is currently of type character.
 
+```{r}
+str(data['date'])
 
+data[,'date'] <- as.Date(as.character(data[,'date']),'%Y-%m-%d')
+
+str(data['date'])
+```
 
 ## What is mean total number of steps taken per day?
+Using the aggregate function to calculate total number of steps per day, based on the day:
+```{r}
+total <- aggregate(x=data$steps,by=list(data[,'date']),sum)
+colnames(total) <- c('day','total.steps')
+head(total,5)
+```
+
+We can use this to plot a histogram of the table above:
+
+```{r}
+hist(total[,'total.steps'],xlab='Total steps per day',main='Histogram')
+```
 
 
+The mean and median values of total steps taken per day is:
+```{r}
+print(paste('Mean:',toString(mean(total[,'total.steps'],na.rm=TRUE),width=11)))
+print(paste('Median:',toString(median(total[,'total.steps'],na.rm=TRUE))))
+```
 
 ## What is the average daily activity pattern?
+We can assess what the daily pattern of walking activity is. Grouping the data according to the time of day (5-minute interval):
+```{r}
+daily <- aggregate(x=data$steps,by=list(data[,'interval']),mean,na.rm=TRUE)
+colnames(daily) <- c('interval','average.steps')
+head(daily,5)
+```
 
+We can now plot a time series plot to identify the daily pattern of walking:
+```{r}
+plot(daily$interval,daily$average.steps,type='l',xlab='5-minute interval',ylab='average number of steps')
+```
 
-
+Identifying which interval contains the maximum number of steps, on average:
+```{r}
+daily[which(daily$average.steps==max(daily$average.steps)),]
+```
+  That corresponds to 8:35 AM.
+  
 ## Imputing missing values
+We can calculate how many missing values we have in the table:
+```{r}
+sum(is.na(data$steps))
+```
+We can impute these numbers using the median number of steps of that particular time interval:
+```{r}
+dailymedian <- aggregate(x=data$steps,by=list(data[,'interval']),median,na.rm=TRUE)
+colnames(dailymedian) <- c('interval','median.steps')
 
+imputed <- c()
 
+for (r in 1:nrow(data)) {
+  if (is.na(data[r,'steps'])){
+    imputed[r] <- dailymedian[dailymedian$interval==data[r,'interval'],'median.steps']
+    } else {
+    imputed[r] <- data[r,'steps']
+    }
+}
+```
+
+We can create a new dataset containing that column
+
+```{r}
+newdata <- cbind(imputed, as.character(data$date),data$interval)
+colnames(newdata) <- colnames(data)
+newdata <- data.frame(newdata)
+newdata$date <- as.Date(newdata$date)
+newdata$steps <- as.numeric(newdata$steps)
+newdata$interval <- as.integer(newdata$interval)
+
+head(newdata,5)
+```
+
+We can recalculate mean and median of steps per day and see if there is substantial difference:
+```{r}
+totalna <- aggregate(x=newdata$steps,by=list(newdata[,'date']),sum)
+colnames(totalna) <- c('day','total.steps')
+hist(totalna[,'total.steps'],xlab='Total steps per day',main='Histogram')
+print(paste('Mean:',toString(mean(totalna[,'total.steps'],na.rm=TRUE),width=11)))
+print(paste('Median:',toString(median(totalna[,'total.steps'],na.rm=TRUE))))
+```
+
+The histogram now has a left skew: some days had no recorded number of steps or they had lots of missing values. When we impute these with the median number of steps for a given interval of the day, that increases the total number of steps for some days, usually falling below 10,000 steps per day. 
+This effectively alters the mean and median number of steps per day, decreasing them.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+We can create a new factor in the table that indicates whether the day was a weekday or not.
+```{r include=FALSE}
+Sys.setlocale('LC_ALL','ENGLISH')
+```
+
+```{r}
+weekdays1 <- c('Monday','Tuesday','Wednesday','Thursday','Friday')
+newdata$weekend <- factor(weekdays(newdata$date) %in% weekdays1,levels=c(TRUE,FALSE),labels=c('weekday','weekend'))
+```
+
+We can then make an updated table with the average number of steps grouped across weekdays and weekend days. Then we can plot them as a time series.
+
+```{r}
+
+dailyweek <- aggregate(x=newdata[newdata$weekend=='weekday',]$steps,by=list(newdata[newdata$weekend=='weekday','interval']),mean,na.rm=TRUE)
+dailyweekend <- aggregate(x=newdata[newdata$weekend=='weekend',]$steps,by=list(newdata[newdata$weekend=='weekend','interval']),mean,na.rm=TRUE)
+colnames(dailyweek) <- c('interval','average.steps')
+colnames(dailyweekend) <- c('interval','average.steps')
+par(mfrow=c(2,1))
+plot(dailyweek$interval,dailyweek$average.steps,type='l',xlab='5-minute interval',ylab='average number of steps',main='Weekdays')
+plot(dailyweekend$interval,dailyweekend$average.steps,type='l',xlab='5-minute interval',ylab='average number of steps',main='Weekend')
+
+```
+
